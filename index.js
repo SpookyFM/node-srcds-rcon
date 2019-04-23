@@ -47,8 +47,16 @@ module.exports = params => {
                 let err = new Error('Wrong rcon password');
                 return Promise.reject(err);
             }
+			console.log(res);
             // Auth successful, but continue after receiving packet index
+			data = packet.sliceData(data);
+			if (data.length > 0) {
+				console.log("Initializing");
+				_init(connection);
+				return;
+			}
             return connection.getData(dataHandler).then(() => {
+				console.log("Got second package");
                 _init(connection);
             });
         });
@@ -95,19 +103,37 @@ module.exports = params => {
                 _connection.getData(dataHandler).then(done);
 
                 function dataHandler(data) {
-                    let res = packet.response(data);
-                    if (res.id === ackId) {
-                        return false;
-                    } else if (res.id === reqId) {
-                        // More data to come
-                        responseData = Buffer.concat([responseData, res.payload], responseData.length + res.payload.length);
-                        return true;
-                    } else {
-                        return handleUnexpectedData(res.id);
-                    }
+					let remainingData = data;
+					let waitForMore = true;
+					while (remainingData.length > 0) {
+						console.log("Parsing more data!");
+						let res = packet.response(remainingData);
+						console.log(res.id);
+						if (res.id === ackId) {
+							console.log("Got ack");
+							waitForMore = false;
+						} else if (res.id === reqId) {
+							// More data to come
+							 let text = packet.convertPayload(res.payload);
+							// console.log("[[" + text + "]]");
+							responseData = Buffer.concat([responseData, res.payload], responseData.length + res.payload.length);
+							// console.log("Waiting for more data");
+							// return true;
+						} else {
+							console.log("Unexpected Data!!!!!!!!!!!!");
+							return handleUnexpectedData(res.id);
+						}
+						var before = remainingData.length;
+						// console.log(remainingData.length);
+						remainingData = packet.sliceData(remainingData);
+						var after = remainingData.length;
+						// console.log(before - after);
+					}
+					return waitForMore;
                 }
 
                 function done() {
+					console.log("done");
                     let text = packet.convertPayload(responseData);
                     resolve(text);
                 }
